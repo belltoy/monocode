@@ -26,6 +26,14 @@ import {
   type TerminalFitMode,
 } from "../model/terminalLayout";
 import { IS_MAC } from "../../../platform/tauri/platform";
+import {
+  loadTerminalFontFamily,
+  loadTerminalCursorStyle,
+  loadTerminalFontSize,
+  resolveTerminalFontFamily,
+  subscribeTerminalFont,
+  subscribeTerminalCursorStyle,
+} from "../../settings/model/terminalPrefs";
 import "@xterm/xterm/css/xterm.css";
 
 type Props = {
@@ -113,13 +121,6 @@ function terminalTheme(light: boolean) {
   };
 }
 
-function monoFont(): string {
-  const fromCss = getComputedStyle(document.documentElement)
-    .getPropertyValue("--font-mono")
-    .trim();
-  return fromCss || "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace";
-}
-
 /**
  * Teardown still in flight per PTY id. A view that mounts with an id another
  * view (or a StrictMode replay of itself) is still stopping must wait, or the
@@ -162,9 +163,9 @@ export function TerminalView({ id, cwd, active, onMetaChange }: Props) {
 
     const term = new Terminal({
       cursorBlink: true,
-      cursorStyle: "bar",
-      fontFamily: monoFont(),
-      fontSize: 13,
+      cursorStyle: loadTerminalCursorStyle(),
+      fontFamily: resolveTerminalFontFamily(loadTerminalFontFamily()),
+      fontSize: loadTerminalFontSize(),
       lineHeight: 1,
       letterSpacing: 0,
       scrollback: 5000,
@@ -353,6 +354,15 @@ export function TerminalView({ id, cwd, active, onMetaChange }: Props) {
     };
 
     applySizeRef.current = applySize;
+    const unsubscribeFont = subscribeTerminalFont(() => {
+      resetGridStretch(term);
+      term.options.fontFamily = resolveTerminalFontFamily(loadTerminalFontFamily());
+      term.options.fontSize = loadTerminalFontSize();
+      schedule();
+    });
+    const unsubscribeCursorStyle = subscribeTerminalCursorStyle(() => {
+      term.options.cursorStyle = loadTerminalCursorStyle();
+    });
     const renderSub = term.onRender(() => {
       if (!spawned.current) applySize();
     });
@@ -367,6 +377,8 @@ export function TerminalView({ id, cwd, active, onMetaChange }: Props) {
       cancelAnimationFrame(frame);
       if (raf) cancelAnimationFrame(raf);
       observer.disconnect();
+      unsubscribeFont();
+      unsubscribeCursorStyle();
       outer.classList.remove("monocode-terminal--alt-screen");
       applySizeRef.current = () => {};
       host.removeEventListener("copy", onCopy);

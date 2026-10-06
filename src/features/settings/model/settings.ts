@@ -162,6 +162,9 @@ export type SettingsEntry = {
 };
 
 export const SETTINGS_INDEX: SettingsEntry[] = [
+  { id: "terminal-cursor-style", section: "appearance", label: "Terminal Cursor Style", keywords: "bar block underline caret shape" },
+  { id: "terminal-font-family", section: "appearance", label: "Terminal Font Family", keywords: "monospace typeface" },
+  { id: "terminal-font-size", section: "appearance", label: "Terminal Font Size", keywords: "text pixels" },
   { id: "remote-machines", section: "connections", label: "Your machines", keywords: "ssh remote connect host server environment" },
   {
     id: "mcp-servers",

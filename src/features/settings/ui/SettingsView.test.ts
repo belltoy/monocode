@@ -24,6 +24,8 @@ import {
   HARNESS_TITLE,
 } from "../../sessions/model/session";
 import { saveMaskEmails, saveShowRemainingUsage } from "../model/displayPrefs";
+import { loadTerminalCursorStyle, saveTerminalCursorStyle } from "../model/terminalPrefs";
+import { loadTerminalFontFamily, loadTerminalFontSize, saveTerminalFontFamily, saveTerminalFontSize } from "../model/terminalPrefs";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
@@ -114,6 +116,78 @@ afterEach(async () => {
 });
 
 describe("settings pages", () => {
+  it("edits terminal cursor style and restores the bar default", async () => {
+    await render("appearance");
+    const row = container.querySelector('[data-setting-id="terminal-cursor-style"]')!;
+    const option = (label: string) => [...row.querySelectorAll("button")].find((button) => button.textContent === label)!;
+    expect(loadTerminalCursorStyle()).toBe("bar");
+    await act(async () => option("Block").click());
+    expect(loadTerminalCursorStyle()).toBe("block");
+    await act(async () => option("Underline").click());
+    expect(loadTerminalCursorStyle()).toBe("underline");
+    await act(async () => {
+      [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Restore defaults"))!.click();
+    });
+    expect(loadTerminalCursorStyle()).toBe("bar");
+    await act(async () => saveTerminalCursorStyle("block"));
+    expect(option("Block").getAttribute("aria-checked")).toBe("true");
+  });
+  it("shows terminal font controls and follows saved preferences", async () => {
+    await render("appearance");
+    const family = container.querySelector<HTMLButtonElement>('[aria-label="Choose terminal font"]')!;
+    expect(family.textContent).toContain("Default monospace");
+    expect(container.querySelector('[data-setting-id="terminal-font-size"]')?.textContent).toContain("12px");
+    await act(async () => {
+      saveTerminalFontFamily("JetBrains Mono");
+      saveTerminalFontSize(18);
+    });
+    expect(family.textContent).toContain("JetBrains Mono");
+    expect(container.querySelector('[data-setting-id="terminal-font-size"]')?.textContent).toContain("18px");
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "pick_terminal_font" ? "Fira Code" : undefined,
+    );
+    await act(async () => family.click());
+    expect(invoke).toHaveBeenCalledWith("pick_terminal_font", { family: "JetBrains Mono", size: 18 });
+    await act(async () => {
+      const size = container.querySelector<HTMLInputElement>('[data-setting-id="terminal-font-size"] input')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(size, "20");
+      size.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(loadTerminalFontFamily()).toBe("Fira Code");
+    expect(loadTerminalFontSize()).toBe(20);
+    await act(async () => {
+      [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Restore defaults"))!.click();
+    });
+    expect(loadTerminalFontFamily()).toBe("");
+    expect(loadTerminalFontSize()).toBe(12);
+  });
+  it("leaves the font unchanged on cancel and reports native picker failures", async () => {
+    saveTerminalFontFamily("Fira Code");
+    await render("appearance");
+    const button = container.querySelector<HTMLButtonElement>('[aria-label="Choose terminal font"]')!;
+    vi.mocked(invoke).mockResolvedValueOnce(null);
+    await act(async () => button.click());
+    expect(loadTerminalFontFamily()).toBe("Fira Code");
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("Font picker unavailable"));
+    await act(async () => button.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Font picker unavailable");
+    expect(button.disabled).toBe(false);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Reset terminal font"]')!.click());
+    expect(loadTerminalFontFamily()).toBe("");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+  it("disables the font button while the system picker is open", async () => {
+    await render("appearance");
+    let finish!: (family: string | null) => void;
+    vi.mocked(invoke).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const button = container.querySelector<HTMLButtonElement>('[aria-label="Choose terminal font"]')!;
+    await act(async () => button.click());
+    expect(button.disabled).toBe(true);
+    await act(async () => finish("Menlo"));
+    expect(button.disabled).toBe(false);
+    expect(loadTerminalFontFamily()).toBe("Menlo");
+    expect(loadTerminalFontSize()).toBe(12);
+  });
   it("keeps account emails blurred until clicked and hides them when settings reopen", async () => {
     saveMaskEmails(true);
     vi.mocked(invoke).mockImplementation(async (command, args) => {

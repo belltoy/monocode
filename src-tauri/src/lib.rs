@@ -9,6 +9,7 @@ mod control;
 pub mod control_cli;
 mod cursor_store;
 mod external_editor;
+mod font_picker;
 mod fs;
 mod gitlab;
 mod harness;
@@ -258,6 +259,7 @@ pub fn run() {
             menu::dispatch(app, event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
+            font_picker::pick_terminal_font,
             remote::remote_machines,
             remote::remote_connect,
             remote::remote_disconnect,

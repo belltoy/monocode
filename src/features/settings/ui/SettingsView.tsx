@@ -3,6 +3,18 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ConnectionsSettings } from "../../connections/ui/ConnectionsSettings";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
+  saveTerminalFontFamily,
+  saveTerminalCursorStyle,
+  saveTerminalFontSize,
+  useTerminalFontFamily,
+  useTerminalFontSize,
+  useTerminalCursorStyle,
+  TERMINAL_CURSOR_STYLE_DEFAULT,
+  TERMINAL_FONT_SIZE_DEFAULT,
+  TERMINAL_FONT_SIZE_MIN,
+  TERMINAL_FONT_SIZE_MAX,
+} from "../model/terminalPrefs";
+import {
   ArrowDownCircle,
   Check,
   ChevronDown,
@@ -1815,6 +1827,11 @@ function useAppearanceSettings(
     loadThemeDarkLightness,
   );
   const [bodyGlass, setBodyGlass] = useState(loadBodyGlass);
+  const terminalFontFamily = useTerminalFontFamily();
+  const terminalFontSize = useTerminalFontSize();
+  const terminalCursorStyle = useTerminalCursorStyle();
+  const [terminalFontBusy, setTerminalFontBusy] = useState(false);
+  const [terminalFontError, setTerminalFontError] = useState<string | null>(null);
   const [showExcludedFiles, setShowExcludedFiles] = useState(
     loadShowExcludedFiles,
   );
@@ -1887,6 +1904,27 @@ function useAppearanceSettings(
     setBodyGlass(next);
     if (IS_LINUX) syncNativeGlass(isLightScheme() ? "light" : "dark");
   }, []);
+
+  const onChooseTerminalFont = useCallback(async () => {
+    setTerminalFontBusy(true);
+    setTerminalFontError(null);
+    try {
+      const family = await invoke<string | null>("pick_terminal_font", {
+        family: terminalFontFamily,
+        size: terminalFontSize,
+      });
+      if (family != null) saveTerminalFontFamily(family);
+    } catch (error) {
+      setTerminalFontError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTerminalFontBusy(false);
+    }
+  }, [terminalFontFamily, terminalFontSize]);
+  const onResetTerminalFont = useCallback(() => {
+    saveTerminalFontFamily("");
+    setTerminalFontError(null);
+  }, []);
+  const onTerminalFontSize = saveTerminalFontSize;
 
   const onShowExcludedFiles = useCallback((next: boolean) => {
     saveShowExcludedFiles(next);
@@ -1976,6 +2014,9 @@ function useAppearanceSettings(
   );
 
   const restoreDefaults = useCallback(() => {
+    saveTerminalFontFamily("");
+    saveTerminalFontSize(TERMINAL_FONT_SIZE_DEFAULT);
+    saveTerminalCursorStyle(TERMINAL_CURSOR_STYLE_DEFAULT);
     onThemePreference(THEME_PREFERENCE_DEFAULT);
     onAccentColor(ACCENT_COLOR_DEFAULT);
     onOpacity(Math.round(SIDEBAR_OPACITY_DEFAULT * 100));
@@ -2025,6 +2066,11 @@ function useAppearanceSettings(
     themeSaturation,
     themeDarkLightness,
     bodyGlass,
+    terminalFontFamily,
+    terminalFontSize,
+    terminalCursorStyle,
+    terminalFontBusy,
+    terminalFontError,
     showExcludedFiles,
     chatBackgroundPath,
     chatBackgroundEmptyOpacity,
@@ -2043,6 +2089,9 @@ function useAppearanceSettings(
     onTint,
     onDarkLightness,
     onBodyGlass,
+    onChooseTerminalFont,
+    onResetTerminalFont,
+    onTerminalFontSize,
     onShowExcludedFiles,
     onChooseChatBackground,
     onClearChatBackground,
@@ -2214,6 +2263,80 @@ function AppearancePage({ appearance }: { appearance: AppearanceSettings }) {
             on={appearance.bodyGlass}
             onChange={appearance.onBodyGlass}
             disabled={glassDisabled}
+          />
+        </Row>
+      </Group>
+
+      <Group
+        title="Terminal"
+        description="Font and cursor preferences for integrated terminals. Changes apply to open terminals."
+      >
+        <Row
+          id="terminal-font-family"
+          label="Terminal Font Family"
+          description="Choose an installed monospace font with the system font picker. Font size is controlled separately below."
+        >
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Choose terminal font"
+                disabled={appearance.terminalFontBusy}
+                onClick={() => void appearance.onChooseTerminalFont()}
+                className="max-w-64 truncate rounded-md border border-content/10 px-2 py-1 text-[12px] text-content hover:bg-content/5 disabled:opacity-50"
+              >
+                {appearance.terminalFontBusy
+                  ? "Choosing…"
+                  : `${appearance.terminalFontFamily || "Default monospace"}…`}
+              </button>
+              {appearance.terminalFontFamily ? (
+                <button
+                  type="button"
+                  aria-label="Reset terminal font"
+                  disabled={appearance.terminalFontBusy}
+                  onClick={appearance.onResetTerminalFont}
+                  className="rounded-md p-1 text-content/50 hover:bg-content/10 disabled:opacity-50"
+                >
+                  <RotateCcw className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+            {appearance.terminalFontError ? (
+              <span role="alert" className="text-[12px] text-red-400">
+                {appearance.terminalFontError}
+              </span>
+            ) : null}
+          </div>
+        </Row>
+        <Row
+          id="terminal-font-size"
+          label="Terminal Font Size"
+          description="Terminal text size in pixels."
+        >
+          <Slider
+            label="Terminal Font Size"
+            value={appearance.terminalFontSize}
+            display={`${appearance.terminalFontSize}px`}
+            min={TERMINAL_FONT_SIZE_MIN}
+            max={TERMINAL_FONT_SIZE_MAX}
+            step={1}
+            onChange={appearance.onTerminalFontSize}
+          />
+        </Row>
+        <Row
+          id="terminal-cursor-style"
+          label="Terminal Cursor Style"
+          description="The cursor shape when the terminal is focused."
+        >
+          <Segmented
+            label="Terminal Cursor Style"
+            value={appearance.terminalCursorStyle}
+            options={[
+              { value: "bar", label: "Bar" },
+              { value: "block", label: "Block" },
+              { value: "underline", label: "Underline" },
+            ]}
+            onChange={saveTerminalCursorStyle}
           />
         </Row>
       </Group>
